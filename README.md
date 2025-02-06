@@ -10,7 +10,6 @@ CyberNote est une **application web interactive** développée avec **Streamlit*
 ✅ **Moteur de recherche intégré**
 ✅ **Exportation et importation des données au format CSV**
 ✅ **Fonctionnalités collaboratives : suivi du créateur et dernier modificateur**
-✅ **Déploiement facile sur Streamlit Cloud, Render, Hugging Face, etc.**
 
 ---
 
@@ -23,7 +22,7 @@ CyberNote est une **application web interactive** développée avec **Streamlit*
 
 ### **2️⃣ Cloner le projet**
 ```sh
- git clone https://github.com/votre-repo/cybernote.git
+ git clone https://github.com/Chelorteau/CyberNotes
  cd cybernote
 ```
 
@@ -80,6 +79,5 @@ rm cybernotes.db
 Tu veux contribuer ? Forke le projet et propose tes améliorations via des PRs !
 
 📩 **Contact** : chelolorteau333@gmail.com
-🔗 **GitHub** : [github.com/votre-repo/cybernote](https://github.com/votre-repo/cybernote)
-
+🔗 **GitHub** : https://github.com/Chelorteau/CyberNotes
 🚀 **Happy Hacking & Stay Secure !** 🔒
