@@ -51,31 +51,6 @@ rm cybernotes.db
 
 ---
 
-## 🌍 **Déploiement gratuit**
-
-### **1️⃣ Déploiement sur Streamlit Cloud** (Facile et rapide)  
-1. **Créer un dépôt GitHub** contenant le projet
-2. **Ajouter un fichier `requirements.txt`** :
-   ```txt
-   streamlit
-   pandas
-   sqlite3
-   pillow
-   ```
-3. **Aller sur** [Streamlit Cloud](https://share.streamlit.io/) et connecter le dépôt
-4. **Lancer le déploiement** 🚀
-
-### **2️⃣ Déploiement sur Render**  
-- Créer un compte sur [Render](https://www.render.com/)
-- Lier le dépôt GitHub et choisir un service "Web Service"
-- Spécifier la commande de démarrage :
-  ```sh
-  streamlit run main.py
-  ```
-- Cliquer sur "Deploy" 🎉
-
----
-
 ## 📚 **Utilisation de CyberNote**
 
 ### **🔹 Ajouter une connaissance**
@@ -104,7 +79,7 @@ rm cybernotes.db
 ## 🎯 **Contribuer au projet**
 Tu veux contribuer ? Forke le projet et propose tes améliorations via des PRs !
 
-📩 **Contact** : ton.email@example.com  
+📩 **Contact** : chelolorteau333@gmail.com
 🔗 **GitHub** : [github.com/votre-repo/cybernote](https://github.com/votre-repo/cybernote)
 
 🚀 **Happy Hacking & Stay Secure !** 🔒
