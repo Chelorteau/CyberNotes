@@ -27,6 +27,7 @@ try:
 except sqlite3.OperationalError:
     pass  
 
+
 # Fonction pour ajouter une nouvelle connaissance
 def add_knowledge(category, subcategory, title, content, image_path=None, created_by="Anonymous"):
     c.execute("INSERT INTO knowledge (category, subcategory, title, content, image_path, created_by, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -69,11 +70,15 @@ CATEGORY_ICONS = {
     "Nmap": "🌐",
     "Metasploit": "💀",
     "Markdown": "📝",
+    "Réseau": "📶",
     "Autre": "🗂️"
 }
 
+
 # Interface Streamlit
+st.set_page_config(page_title="CyberNote", layout="wide")
 st.title("🛜 CyberNotes")
+
 
 # Saisir le nom de l'utilisateur
 current_user = st.sidebar.text_input("Votre nom", value="Anonymous")
@@ -189,7 +194,10 @@ if not data.empty:
 
     categories = data['category'].unique()
     selected_category = st.selectbox("Choisir une catégorie", [f"{CATEGORY_ICONS[cat]} {cat}" for cat in categories])
-    selected_category = selected_category.split(" ", 1)[1]  # Récupère uniquement le nom
+    if selected_category:
+        selected_category = selected_category.split(" ", 1)[1]
+    else:
+        selected_category = None
     filtered_data = data[data['category'] == selected_category]
 
     subcategories = filtered_data['subcategory'].dropna().unique()
