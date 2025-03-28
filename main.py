@@ -2,130 +2,101 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 # Création de la base de données
 DB_PATH = "cybernotes.db"
 conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS knowledge (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT,
-                subcategory TEXT,
-                title TEXT,
-                content TEXT,
-                image_path TEXT,
-                created_by TEXT,
-                last_modified_by TEXT
-            )''')
-conn.commit()
 
-try:
-    conn.execute("ALTER TABLE knowledge ADD COLUMN created_by TEXT DEFAULT 'Anonymous'")
-    conn.execute("ALTER TABLE knowledge ADD COLUMN last_modified_by TEXT DEFAULT 'Anonymous'")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass  
+# Fonctions
 
-
-# Fonction pour ajouter une nouvelle connaissance
-def add_knowledge(category, subcategory, title, content, image_path=None, created_by="Anonymous"):
-    c.execute("INSERT INTO knowledge (category, subcategory, title, content, image_path, created_by, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              (category, subcategory, title, content, image_path, created_by, created_by))
+def add_knowledge(category, subcategory, title, content, image_path=None, created_by="Anonymous", tool="", linked_to=None):
+    subcategory = subcategory.strip().capitalize() if subcategory else ""
+    c.execute("""INSERT INTO knowledge (category, subcategory, title, content, image_path, created_by, last_modified_by, tool, linked_to_note_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+              (category, subcategory, title, content, image_path, created_by, created_by, tool, linked_to))
     conn.commit()
 
-# Fonction pour récupérer les connaissances
 def get_knowledge():
-    df = pd.read_sql_query("SELECT * FROM knowledge", conn)
-    return df
+    return pd.read_sql_query("SELECT * FROM knowledge", conn)
 
-# Fonction pour mettre à jour une connaissance
-def update_knowledge(entry_id, category, subcategory, title, content, image_path=None, modified_by="Anonymous"):
-    c.execute("UPDATE knowledge SET category = ?, subcategory = ?, title = ?, content = ?, image_path = ?, last_modified_by = ? WHERE id = ?",
-              (category, subcategory, title, content, image_path, modified_by, entry_id))
+def get_deleted_knowledge():
+    return pd.read_sql_query("SELECT * FROM deleted_knowledge", conn)
+
+def update_knowledge(entry_id, category, subcategory, title, content, image_path=None, modified_by="Anonymous", tool="", linked_to=None):
+    subcategory = subcategory.strip().capitalize() if subcategory else ""
+    c.execute("""UPDATE knowledge SET category = ?, subcategory = ?, title = ?, content = ?, image_path = ?,
+              last_modified_by = ?, tool = ?, linked_to_note_id = ? WHERE id = ?""",
+              (category, subcategory, title, content, image_path, modified_by, tool, linked_to, entry_id))
     conn.commit()
 
-# Fonction pour supprimer une connaissance
 def delete_knowledge(entry_id):
-    c.execute("DELETE FROM knowledge WHERE id = ?", (entry_id,))
+    row = c.execute("SELECT * FROM knowledge WHERE id = ?", (entry_id,)).fetchone()
+    if row:
+        c.execute("INSERT INTO deleted_knowledge VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+        c.execute("DELETE FROM knowledge WHERE id = ?", (entry_id,))
+        conn.commit()
+
+def restore_knowledge(entry_id):
+    row = c.execute("SELECT * FROM deleted_knowledge WHERE id = ?", (entry_id,)).fetchone()
+    if row:
+        c.execute("INSERT INTO knowledge VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+        c.execute("DELETE FROM deleted_knowledge WHERE id = ?", (entry_id,))
+        conn.commit()
+
+def permanently_delete(entry_id):
+    c.execute("DELETE FROM deleted_knowledge WHERE id = ?", (entry_id,))
     conn.commit()
 
-# Fonction pour exporter les données en CSV
 def export_data():
     df = get_knowledge()
-    export_path = "knowledge_export.csv"
-    df.to_csv(export_path, index=False)
-    return export_path
+    path = "knowledge_export.csv"
+    df.to_csv(path, index=False)
+    return path
 
-# Fonction pour importer les données depuis un CSV
 def import_data(file_path):
     df = pd.read_csv(file_path)
     for _, row in df.iterrows():
-        add_knowledge(row['category'], row['subcategory'], row['title'], row['content'], row.get('image_path'), row.get('created_by', "Anonymous"))
+        add_knowledge(row['category'], row['subcategory'], row['title'], row['content'], row.get('image_path'), row.get('created_by', "Anonymous"), row.get('tool', ""))
 
-# Icônes pour les catégories
 CATEGORY_ICONS = {
     "Linux": "🐧",
     "Wireshark": "🦈",
-    "Nmap": "🌐",
     "Metasploit": "💀",
     "Markdown": "📝",
     "Réseau": "📶",
+    "PenTest": "🔐",
     "Autre": "🗂️"
 }
 
+data = get_knowledge()
 
-# Interface Streamlit
 st.set_page_config(page_title="CyberNote", layout="wide")
 st.title("🛜 CyberNotes")
-
-
-# Saisir le nom de l'utilisateur
 current_user = st.sidebar.text_input("Votre nom", value="Anonymous")
 
-# Gestion des importations et exportations
-if st.sidebar.button("Exporter les données en CSV"):
-    export_path = export_data()
-    st.sidebar.success(f"Données exportées avec succès : {export_path}")
-    with open(export_path, "rb") as file:
-        st.sidebar.download_button(
-            label="Télécharger le fichier CSV",
-            data=file,
-            file_name="knowledge_export.csv",
-            mime="text/csv"
-        )
-
-uploaded_file = st.sidebar.file_uploader("Importer un fichier CSV", type=["csv"])
-if uploaded_file is not None:
-    try:
-        import_data(uploaded_file)
-        st.sidebar.success("Données importées avec succès !")
-    except Exception as e:
-        st.sidebar.error(f"Erreur lors de l'importation : {e}")
-
-# Formulaire d'ajout ou de modification de connaissance
-option = st.sidebar.radio("Action", ["Ajouter", "Modifier", "Supprimer"])
-
-if option == "Ajouter":
-    category = st.sidebar.selectbox("Catégorie", list(CATEGORY_ICONS.keys()))
-
-    # Récupérer les sous-catégories existantes pour la catégorie sélectionnée
+# Formulaire d'ajout
+with st.sidebar.expander("➕ Ajouter une nouvelle connaissance"):
+    category = st.selectbox("Catégorie", list(CATEGORY_ICONS.keys()), key="add_category")
     existing_data = get_knowledge()
     existing_subcategories = existing_data[existing_data['category'] == category]['subcategory'].dropna().unique()
-
-    subcategory = st.sidebar.selectbox(
-        "Sous-catégorie (ou ajouter une nouvelle)",
-        ["Créer une nouvelle"] + list(existing_subcategories)
-    )
-
+    cleaned_subcategories = sorted(set([s.strip().capitalize() for s in existing_subcategories if s]))
+    subcategory = st.selectbox("Sous-catégorie (ou nouvelle)", ["Créer une nouvelle"] + cleaned_subcategories, key="add_subcat_select")
     if subcategory == "Créer une nouvelle":
-        subcategory = st.sidebar.text_input("Nouvelle sous-catégorie")
+        subcategory = st.text_input("Nouvelle sous-catégorie", key="add_subcat_text")
+    title = st.text_input("Titre", key="add_title")
+    tool = st.text_input("Outil utilisé (facultatif)", key="add_tool")
 
-    title = st.sidebar.text_input("Titre de la connaissance")
-    content = st.sidebar.text_area("Description / Commande (en Markdown)")
-    uploaded_image = st.sidebar.file_uploader("Ajouter une image (optionnel)", type=["png", "jpg", "jpeg"])
+    format_type = st.selectbox("Format du contenu", ["Markdown", "LaTeX"], key="add_format")
+    if format_type == "Markdown":
+        content = st.text_area("Contenu (Markdown)", key="add_content")
+    else:
+        content = st.text_area("Contenu (LaTeX)", key="add_content")
 
-    if st.sidebar.button("Ajouter"):
+    uploaded_image = st.file_uploader("Image (optionnelle)", type=["png", "jpg", "jpeg"], key="add_img")
+
+    if st.button("Ajouter", key="add_btn"):
         image_path = None
         if uploaded_image:
             image_dir = "images"
@@ -133,92 +104,158 @@ if option == "Ajouter":
             image_path = os.path.join(image_dir, uploaded_image.name)
             with open(image_path, "wb") as f:
                 f.write(uploaded_image.getbuffer())
-        
-        add_knowledge(category, subcategory, title, content, image_path, created_by=current_user)
-        st.sidebar.success("Ajout réussi !")
+        add_knowledge(category, subcategory, title, content, image_path, created_by=current_user, tool=tool)
+        st.success("Ajout effectué !")
 
-elif option == "Modifier":
-    data = get_knowledge()
-    if not data.empty:
-        entry_title_map = {row['title']: row['id'] for _, row in data.iterrows()}
-        entry_title = st.sidebar.selectbox("Sélectionner une entrée à modifier", list(entry_title_map.keys()))
-        entry_id = entry_title_map[entry_title]
-        entry = data[data['id'] == entry_id].iloc[0]
-        
-        category = st.sidebar.selectbox("Catégorie", list(CATEGORY_ICONS.keys()), index=list(CATEGORY_ICONS.keys()).index(entry['category']))
 
-        existing_subcategories = data[data['category'] == category]['subcategory'].dropna().unique()
-        subcategory = st.sidebar.selectbox(
-            "Sous-catégorie (ou ajouter une nouvelle)",
-            ["Créer une nouvelle"] + list(existing_subcategories),
-            index=(["Créer une nouvelle"] + list(existing_subcategories)).index(entry['subcategory']) if entry['subcategory'] else 0
+# Formulaire de création de raccourcis
+with st.sidebar.expander("🔗 Créer un raccourci vers une note existante"):
+    shortcut_category = st.selectbox("Catégorie du raccourci", list(CATEGORY_ICONS.keys()), key="shortcut_category")
+    shortcut_subcategory = st.text_input("Sous-catégorie du raccourci", key="shortcut_subcat")
+    shortcut_title = st.text_input("Titre du raccourci", key="shortcut_title")
+
+    existing_notes = data[data['linked_to_note_id'].isna()]  # filtre uniquement les vraies notes
+    note_choices = [f"{r['subcategory']} - {r['title']} (id={r['id']})" for _, r in existing_notes.iterrows()]
+    shortcut_target = st.selectbox("Note cible", note_choices, key="shortcut_target")
+
+    if st.button("Créer le raccourci", key="create_shortcut_btn"):
+        target_id = int(shortcut_target.split("id=")[-1].strip(")"))
+        add_knowledge(
+            shortcut_category,
+            shortcut_subcategory,
+            shortcut_title,
+            content="",
+            image_path=None,
+            created_by=current_user,
+            tool="",
+            linked_to=target_id
         )
+        st.success("Raccourci créé avec succès !")
+        st.rerun()
 
-        if subcategory == "Créer une nouvelle":
-            subcategory = st.sidebar.text_input("Nouvelle sous-catégorie")
 
-        title = st.sidebar.text_input("Titre de la connaissance", entry['title'])
-        content = st.sidebar.text_area("Description / Commande (en Markdown)", entry['content'])
-        uploaded_image = st.sidebar.file_uploader("Ajouter une nouvelle image (optionnel)", type=["png", "jpg", "jpeg"])
-
-        if st.sidebar.button("Modifier"):
-            image_path = entry['image_path']
-            if uploaded_image:
-                image_dir = "images"
-                os.makedirs(image_dir, exist_ok=True)
-                image_path = os.path.join(image_dir, uploaded_image.name)
-                with open(image_path, "wb") as f:
-                    f.write(uploaded_image.getbuffer())
-            
-            update_knowledge(entry_id, category, subcategory, title, content, image_path, modified_by=current_user)
-            st.sidebar.success("Modification réussie !")
-
-elif option == "Supprimer":
-    data = get_knowledge()
-    if not data.empty:
-        entry_title_map = {row['title']: row['id'] for _, row in data.iterrows()}
-        entry_title = st.sidebar.selectbox("Sélectionner une entrée à supprimer", list(entry_title_map.keys()))
-        entry_id = entry_title_map[entry_title]
-
-        if st.sidebar.button("Supprimer"):
-            delete_knowledge(entry_id)
-            st.sidebar.success("Suppression réussie !")
-
-# Affichage des connaissances par chapitre et sous-catégorie
+# Affichage des connaissances
 st.header("📂 Base de connaissances")
-data = get_knowledge()
 if not data.empty:
-    search_query = st.text_input("🔍 Rechercher une connaissance")
+    if st.button("🔄 Recharger l'interface"):
+        st.rerun()
+
+    search_query = st.text_input("🔍 Rechercher par mot-clé ou outil")
     if search_query:
-        data = data[data['title'].str.contains(search_query, case=False, na=False) | data['content'].str.contains(search_query, case=False, na=False)]
+        data = data[data.apply(lambda row: search_query.lower() in str(row['title']).lower() or
+                                           search_query.lower() in str(row['content']).lower() or
+                                           search_query.lower() in str(row['tool']).lower(), axis=1)]
 
-    categories = data['category'].unique()
-    selected_category = st.selectbox("Choisir une catégorie", [f"{CATEGORY_ICONS[cat]} {cat}" for cat in categories])
-    if selected_category:
-        selected_category = selected_category.split(" ", 1)[1]
-    else:
-        selected_category = None
-    filtered_data = data[data['category'] == selected_category]
+    categories = sorted(set(data['category'].dropna()))
+    displayable_categories = [cat for cat in categories if cat in CATEGORY_ICONS]
 
-    subcategories = filtered_data['subcategory'].dropna().unique()
-    subcategories = list(set(subcategories))  # Supprime les doublons
-    if len(subcategories) > 0:
-        selected_subcategory = st.selectbox("Choisir une sous-catégorie", ["Toutes"] + subcategories)
-        if selected_subcategory != "Toutes":
-            filtered_data = filtered_data[filtered_data['subcategory'] == selected_subcategory]
+    if displayable_categories:
+        selected_display = st.selectbox("Catégorie", [f"{CATEGORY_ICONS[cat]} {cat}" for cat in displayable_categories])
+        selected_category = selected_display.split(" ", 1)[1]
+        filtered_data = data[data['category'] == selected_category]
 
-    if not filtered_data.empty:
-        for _, row in filtered_data.iterrows():
-            with st.expander(f"{CATEGORY_ICONS[row['category']]} {row['title']}"):
-                st.markdown(f"**Créé par** : {row['created_by']}  ")
-                st.markdown(f"**Dernière modification par** : {row['last_modified_by']}  ")
-                st.markdown(row['content'])  # Utilisation de Markdown pour afficher la description
-                if row['image_path'] and os.path.exists(row['image_path']):
-                    st.image(row['image_path'], caption=row['title'])
-    else:
-        st.info("Aucune connaissance dans cette catégorie/sous-catégorie.")
+        subcategories = sorted(set([s.strip().capitalize() for s in filtered_data['subcategory'].dropna()]))
+        if subcategories:
+            selected_subcat = st.selectbox("Sous-catégorie", ["Toutes"] + subcategories)
+            if selected_subcat != "Toutes":
+                filtered_data = filtered_data[filtered_data['subcategory'].str.strip().str.capitalize() == selected_subcat]
+
+            for _, row in filtered_data.iterrows():
+                is_shortcut = False
+                if pd.notnull(row['linked_to_note_id']):
+                    shortcut_target = data[data['id'] == row['linked_to_note_id']]
+                    if not shortcut_target.empty:
+                        shortcut_row = shortcut_target.iloc[0]
+                        st.markdown(f"🔗 **Raccourci vers : `{shortcut_row['category']} > {shortcut_row['subcategory']}`**")
+                        st.markdown(f"**Titre cible :** {shortcut_row['title']}")
+                        is_shortcut = True
+
+                with st.expander(f"{CATEGORY_ICONS.get(row['category'], '')} {row['title']}"):
+                    st.markdown(f"**Créé par :** {row['created_by']}")
+                    st.markdown(f"**Modifié par :** {row['last_modified_by']}")
+                    if row['tool']:
+                        st.markdown(f"**Outil utilisé :** `{row['tool']}`")
+                    if "$" in row['content']:
+                        st.latex(row['content'])
+                    else:
+                        st.markdown(row['content'])
+
+                    if row['image_path'] and os.path.exists(row['image_path']):
+                        st.image(row['image_path'], caption=row['title'])
+
+                    if not is_shortcut and st.checkbox("✏️ Modifier", key=f"edit_{row['id']}"):
+                        new_title = st.text_input("Titre", row['title'], key=f"title_{row['id']}")
+                        new_content = st.text_area("Contenu", row['content'], key=f"content_{row['id']}")
+                        new_category = st.selectbox("Catégorie", list(CATEGORY_ICONS.keys()), index=list(CATEGORY_ICONS.keys()).index(row['category']), key=f"cat_{row['id']}")
+                        new_subcategory = st.text_input("Sous-catégorie", row['subcategory'] or "", key=f"subcat_{row['id']}")
+                        new_tool = st.text_input("Outil utilisé", row['tool'] or "", key=f"tool_{row['id']}")
+
+                        all_notes = data[(data['id'] != row['id']) & (data['subcategory'].notna())]
+                        all_notes_display = [f"{r['subcategory']} - {r['title']} (id={r['id']})" for _, r in all_notes.iterrows()]
+                        selected_link = st.selectbox("Raccourci vers une autre sous-catégorie (optionnel)", ["Aucun"] + all_notes_display, key=f"link_{row['id']}")
+                        linked_id = None
+                        if selected_link != "Aucun":
+                            linked_id = int(selected_link.split("id=")[-1].strip(")"))
+
+                        new_img = st.file_uploader("Nouvelle image", type=["png", "jpg", "jpeg"], key=f"img_{row['id']}")
+                        if st.button("Enregistrer", key=f"save_{row['id']}"):
+                            image_path = row['image_path']
+                            if new_img:
+                                image_dir = "images"
+                                os.makedirs(image_dir, exist_ok=True)
+                                image_path = os.path.join(image_dir, new_img.name)
+                                with open(image_path, "wb") as f:
+                                    f.write(new_img.getbuffer())
+                            update_knowledge(row['id'], new_category, new_subcategory, new_title, new_content, image_path, modified_by=current_user, tool=new_tool, linked_to=linked_id)
+                            st.success("Modifié avec succès !")
+                            st.rerun()
+
+                    # Boutons de suppression
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🗑️ Supprimer", key=f"delete_{row['id']}"):
+                            delete_knowledge(row['id'])
+                            st.success("Note déplacée dans la corbeille.")
+                            st.rerun()
+                    with col2:
+                        if is_shortcut:
+                            if st.button("🧹 Supprimer uniquement le raccourci", key=f"unlink_{row['id']}"):
+                                update_knowledge(row['id'], row['category'], row['subcategory'], row['title'], row['content'],
+                                                row['image_path'], modified_by=current_user, tool=row['tool'], linked_to=None)
+                                st.success("Raccourci supprimé.")
+                                st.rerun()
+
 else:
-    st.info("Aucune connaissance enregistrée.")
+    st.info("Aucune donnée disponible.")
 
-# Fermeture de la connexion à la base de données
+
+# Corbeille
+st.header("🗃️ Corbeille")
+deleted = get_deleted_knowledge()
+if not deleted.empty:
+    for _, row in deleted.iterrows():
+        with st.expander(f"🗑️ {row['title']}"):
+            st.markdown(f"**Créé par :** {row['created_by']}")
+            st.markdown(f"**Modifié par :** {row['last_modified_by']}")
+            if row['tool']:
+                st.markdown(f"**Outil utilisé :** `{row['tool']}`")
+            if "$" in row['content']:
+                st.latex(row['content'])
+            else:
+                st.markdown(row['content'])
+            if row['image_path'] and os.path.exists(row['image_path']):
+                st.image(row['image_path'], caption=row['title'])
+
+            col1, col2 = st.columns(2)
+            if col1.button("♻️ Restaurer", key=f"restore_{row['id']}"):
+                restore_knowledge(row['id'])
+                st.success("Note restaurée !")
+                st.rerun()
+            if col2.button("❌ Supprimer définitivement", key=f"permadelete_{row['id']}"):
+                permanently_delete(row['id'])
+                st.success("Note supprimée définitivement.")
+                st.rerun()
+else:
+    st.info("Aucune note supprimée.")
+
 conn.close()
