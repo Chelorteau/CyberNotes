@@ -5,10 +5,39 @@ import os
 from PIL import Image
 
 # Création de la base de données
+# Vérification de l'existence de la base de données
+if not os.path.exists("cybernotes.db"):
+    conn = sqlite3.connect("cybernotes.db")
+    c = conn.cursor()
+    # Création des tables
+    c.execute("""CREATE TABLE knowledge (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT,
+                subcategory TEXT,
+                title TEXT,
+                content TEXT,
+                image_path TEXT,
+                created_by TEXT,
+                last_modified_by TEXT,
+                tool TEXT,
+                linked_to_note_id INTEGER)""")
+
+    c.execute("""CREATE TABLE deleted_knowledge (
+                id INTEGER PRIMARY KEY,
+                category TEXT,
+                subcategory TEXT,
+                title TEXT,
+                content TEXT,
+                image_path TEXT,
+                created_by TEXT,
+                last_modified_by TEXT,
+                tool TEXT,
+                linked_to_note_id INTEGER)""")
+    conn.commit()
+    conn.close()
 DB_PATH = "cybernotes.db"
 conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
-
 # Fonctions
 
 def add_knowledge(category, subcategory, title, content, image_path=None, created_by="Anonymous", tool="", linked_to=None):
